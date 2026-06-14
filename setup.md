@@ -34,7 +34,7 @@ No EC2, no VPC, no NAT. Nothing billable.
 
 ## Prereqs (do once, before task 01)
 
-> **Scope: `05-cicd/` is its own git repo** (not the whole `iac-learning` tree). Phase-3 config in `04-aws-basics/` stays local-only; CI doesn't need it because state lives in S3. Remote repo: `melvillewong/iac-learning` (contains only `05-cicd/` files; keep it consistent in the OIDC `sub` in task 02).
+> **Scope: `05-cicd/` is its own git repo** (not the whole `iac-learning` tree). Phase-3 config in `04-aws-basics/` stays local-only; CI doesn't need it because state lives in S3. Remote repo: `melvillewong/iac-cicd` (contains only `05-cicd/` files; keep it consistent in the OIDC `sub` in task 02).
 
 ### 1. Git repo
 
@@ -47,7 +47,7 @@ git init
 ### 2. GitHub repo
 
 ```bash
-gh repo create iac-learning --private --source=. --remote=origin
+gh repo create iac-cicd --private --source=. --remote=origin
 # or create on github.com and: git remote add origin <url>
 ```
 

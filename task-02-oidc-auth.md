@@ -22,7 +22,7 @@ Let GitHub Actions authenticate to AWS with NO stored access keys. Create an OID
 
 **How OIDC fixes it — the flow each workflow run:**
 
-1. GitHub Actions acts as an **OIDC identity provider**. When your workflow runs, GitHub mints a short-lived **JWT** describing this run: which repo, which branch, which environment (the `sub` claim, e.g. `repo:melvillewong/iac-learning:ref:refs/heads/main`).
+1. GitHub Actions acts as an **OIDC identity provider**. When your workflow runs, GitHub mints a short-lived **JWT** describing this run: which repo, which branch, which environment (the `sub` claim, e.g. `repo:melvillewong/iac-cicd:ref:refs/heads/main`).
 2. The workflow calls AWS STS: `AssumeRoleWithWebIdentity`, presenting that JWT.
 3. AWS checks: (a) do I trust this OIDC provider? (the `aws_iam_openid_connect_provider` you create), and (b) does the role's **trust policy** allow this exact `sub`?
 4. If yes, STS returns **temporary credentials** (valid ~1 hour). Workflow uses them, they expire. Nothing stored.
@@ -61,7 +61,7 @@ Bootstrap locally with your existing IAM user (it has admin → can create these
 - resource `aws_iam_role`, `assume_role_policy` = trust policy (JSON or `data "aws_iam_policy_document"`):
   - `Principal` = `Federated` → the OIDC provider ARN
   - `Action` = `sts:AssumeRoleWithWebIdentity`
-  - `Condition`: `StringEquals` on `...:aud = sts.amazonaws.com`, and `StringLike` on `...:sub = repo:melvillewong/iac-learning:*` (your actual remote repo; tighten to specific branches later)
+  - `Condition`: `StringEquals` on `...:aud = sts.amazonaws.com`, and `StringLike` on `...:sub = repo:melvillewong/iac-cicd:*` (your actual remote repo; tighten to specific branches later)
 
 ### Permissions policy
 - resource `aws_iam_role_policy` (inline) or `aws_iam_policy` + attachment
