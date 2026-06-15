@@ -18,11 +18,26 @@ Put **`05-cicd/`** under git (its own repo, not the whole `iac-learning` tree) w
 
 1. Why must `terraform.tfstate` never be committed to git? (two reasons — what does state contain, and what breaks with concurrent edits?)
 
-2. What is in `.terraform/`? Why is it safe to delete and regenerate, hence ignored?
+- contains secrets in plaintext (passwords, keys, ARNs) → leaks to anyone with repo read
+- git can't lock/merge state → concurrent commits corrupt it, orphan resources
 
-3. `.terraform.lock.hcl` — commit it or ignore it? Why?
+1. What is in `.terraform/`? Why is it safe to delete and regenerate, hence ignored?
 
-4. A `*.tfvars` file may hold secrets. Should you blanket-ignore all tfvars, or is there nuance?
+- provider binaries + module cache + selected backend
+- pure cache, no unique data → regenerate anytime via `terraform init`, so ignore
+
+1. `.terraform.lock.hcl` — commit it or ignore it? Why?
+
+- pins provider versions + checksums (not core version, that's `required_version`)
+- commit → team + CI use identical providers
+- `init` flow: read `.tf` (provider + constraint) → read lock (pin + checksum) → install exact version → verify checksum
+- caveats: no lock → init writes one (newest in range); `init -upgrade` → rewrites (only way version moves)
+
+1. A `*.tfvars` file may hold secrets. Should you blanket-ignore all tfvars, or is there nuance?
+
+- depends on content, not blanket-ignore
+- secret-bearing → ignore (better: keep secrets out of tfvars, use `TF_VAR_*` / SSM / Secrets Manager)
+- non-secret shared config → commit, or commit a `*.tfvars.example` template
 
 ---
 
@@ -62,6 +77,15 @@ If a state file shows in `git ls-files`, stop and fix `.gitignore` before pushin
 
 1. You already ran `apply` in Phase 3 — is there a `terraform.tfstate` locally? If so, why is it safe now that remote backend is active?
 
-2. If you accidentally committed `terraform.tfstate` once and later added it to `.gitignore`, is it gone from history? What would you actually need to do?
+- yes, empty stub locally; real state lives in S3 after migrate
+- safe: it's empty (no secrets) AND gitignored
 
-3. Why commit `.terraform.lock.hcl` but not the `.terraform/` directory — what's the difference in what they hold?
+1. If you accidentally committed `terraform.tfstate` once and later added it to `.gitignore`, is it gone from history? What would you actually need to do?
+
+- no, gitignore doesn't touch past commits; still in history
+- fix: purge history (`git filter-repo` / BFG) + force-push, AND rotate the secret (once pushed = compromised, scrubbing won't un-leak it)
+
+1. Why commit `.terraform.lock.hcl` but not the `.terraform/` directory — what's the difference in what they hold?
+
+- lock = small text recipe (versions + checksums), source of truth → commit
+- `.terraform/` = binaries derived from lock via `init`, regenerable build output → ignore (like `package-lock.json` vs `node_modules/`)

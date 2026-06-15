@@ -6,6 +6,27 @@ Wire Terraform into GitHub Actions. Runner authenticates to AWS via OIDC (no sto
 
 ---
 
+## Purpose — the GitOps loop
+
+Goal: git is the source of truth for infra. A change is **proposed** in a PR (preview only) and **applied** on merge (gated). No one runs `terraform apply` by hand.
+
+| Trigger | Workflow | Runs | Effect on AWS |
+|---|---|---|---|
+| open/update PR | `plan.yml` (task 03) | fmt → init → validate → **plan** | none (read-only preview) |
+| merge to `main` | `apply.yml` (task 04) | init → **apply** (after env approval) | applies the diff |
+
+The safety gate before AWS is touched (3 cheap checks, NOT a state test):
+- `fmt -check` → formatting/style
+- `validate` → config internally valid (refs, types); no AWS call, no state
+- `plan` → reads remote state from S3, diffs vs real AWS, shows `+/~/-`. The **human reading this output is the review** — it does not test state correctness. (Heavier checks like tflint/checkov/OPA could slot in here later.)
+
+Why the supporting pieces exist:
+- **OIDC (task 02)** → runner gets AWS creds with no stored keys. Auth layer, not the loop.
+- **remote state (phase 3 prereq)** → fresh runner has no local state; pulls from S3 to know current infra.
+- **plan/apply split** → PR = intent (safe), merge = execution (gated). A PR can never mutate AWS.
+
+---
+
 ## What this phase manages
 
 | Resource | Why | Cost |
@@ -87,3 +108,9 @@ GitHub's OIDC provider + an IAM role the workflow assumes. Bootstrapped via Terr
 - **Why OIDC over secrets?** Stored `AWS_ACCESS_KEY_ID` in GitHub secrets = long-lived, leakable, needs rotation. OIDC issues a short-lived token per run, scoped to your repo. No secret to leak.
 - **Why does CI need remote state?** The runner is a fresh machine each run. Local state would be lost. It pulls state from S3, applies, pushes back. Phase 3's backend is the prereq that makes CI possible.
 - **plan vs apply split**: PR shows what *would* change (safe, read-only intent). Merge to `main` actually applies (gated). This is the core GitOps loop.
+- **Teardown a self-referential state bucket** (bucket holds its own state): can't `destroy` in place.
+  - why: destroy deletes bucket, then tries to write state back → bucket gone → fails
+  - why: if versioning enabled, bucket blocks `DeleteBucket` (`BucketNotEmpty`) until all object versions purged
+  - fix 1: point backend to local + `terraform init -migrate-state` (pull state S3 → local)
+  - fix 2: `terraform destroy` (needs `force_destroy = true` on bucket)
+  - migrating back to local first is required
