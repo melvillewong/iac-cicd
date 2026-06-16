@@ -14,15 +14,7 @@ Let GitHub Actions authenticate to AWS with NO stored access keys. Create an OID
 
 ---
 
-## OIDC flow
-
-Pre-defined in AWS:
-
-- `aws_iam_openid_connect_provider`: url=token.actions.githubusercontent.com, client_id_list=[sts.amazonaws.com]
-- `aws_iam_role` trust policy: sub must match `repo:you/repo:*`
-- `aws_iam_role` permissions policy: what creds can do (SSM, S3)
-
-Runtime: GitHub JWT (iss=token.actions... [must match url], aud=sts.amazonaws.com [must match client_id_list], sub=repo:you/repo:ref [must match trust policy]) -> STS AssumeRoleWithWebIdentity -> temp creds (scoped to permissions policy)
+> AWS-side vs GitHub-side prereqs + JWT claim-matching: see [reference-oidc-flow.md](reference-oidc-flow.md).
 
 ---
 

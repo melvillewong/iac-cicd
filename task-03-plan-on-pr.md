@@ -18,11 +18,22 @@ Add a GitHub Actions workflow that runs on every pull request: format check, ini
 
 1. Why run `terraform plan` (not `apply`) on a PR? What does the reviewer gain?
 
-2. The workflow needs `permissions: id-token: write`. What breaks without it? (tie back to OIDC)
+- plan = preview diff (read-only); apply = mutate. On a PR you want intent, not change
+- reviewer gains: sees exact `+/~/-` before approving → catches bad changes pre-merge
 
-3. Why run `terraform fmt -check` and `validate` in CI rather than trusting local runs?
+1. The workflow needs `permissions: id-token: write`. What breaks without it? (tie back to OIDC)
 
-4. The runner is a fresh VM with no state. How does it get the current state to diff against?
+- without it, GitHub won't mint the OIDC JWT for the run → `configure-aws-credentials` gets no token → can't assume role → no AWS creds → auth step fails
+
+1. Why run `terraform fmt -check` and `validate` in CI rather than trusting local runs?
+
+- local checks are skippable/forgettable; CI enforces uniformly on every PR, can't bypass
+- isolated clean env = objective result, no "works on my machine"
+
+1. The runner is a fresh VM with no state. How does it get the current state to diff against?
+
+- `terraform init` reads the backend config → connects to the S3 bucket → pulls current state. Runner is locally stateless; remote backend is the shared source, plan diffs against it
+- CI must supply backend config (`backend.hcl` is gitignored) → pass `-backend-config` flags / repo vars in the workflow
 
 ---
 
@@ -69,6 +80,12 @@ gh run watch
 
 1. Change `app_message` in a PR. What does the plan show, and what is still true about AWS until you merge?
 
-2. If `configure-aws-credentials` fails with "Not authorized to perform sts:AssumeRoleWithWebIdentity", where do you look — the workflow, the trust policy, or both?
+- the plan shows change to ssm value
 
-3. Why store the role ARN as a repo variable instead of hardcoding it in the YAML? (it's not secret — so why?)
+1. If `configure-aws-credentials` fails with "Not authorized to perform sts:AssumeRoleWithWebIdentity", where do you look — the workflow, the trust policy, or both?
+
+- both
+
+1. Why store the role ARN as a repo variable instead of hardcoding it in the YAML? (it's not secret — so why?)
+
+- for management and security
