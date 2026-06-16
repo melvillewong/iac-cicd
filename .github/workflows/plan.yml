@@ -51,7 +51,12 @@ jobs:
           PLAN: ${{ steps.plan.outputs.stdout }}
         with:
           script: |
-            const body = `#### Terraform Plan\n\`\`\`hcl\n${process.env.PLAN}\n\`\`\``;
+            const plan = process.env.PLAN || '';
+            const summary = plan.split('\n')
+              .filter(l => /will be (created|updated|destroyed|replaced|read)/.test(l)
+                        || /^(Plan:|No changes)/.test(l.trim()))
+              .join('\n') || 'No summary (plan may have errored).';
+            const body = `#### Terraform Plan (summary)\n\`\`\`\n${summary}\n\`\`\``;
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
