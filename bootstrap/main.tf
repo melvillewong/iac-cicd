@@ -57,14 +57,14 @@ resource "aws_iam_role_policy" "default" {
     Version = "2012-10-17" # fixed IAM policy-language date, always this value
     Statement = [
       {
-        Action   = ["ssm:GetParameter", "ssm:PutParameter", "ssm:DeleteParameter", "ssm:AddTagsToResource", "ssm:ListTagsForResource"]
+        Action   = ["ssm:PutParameter", "ssm:DeleteParameter", "ssm:AddTagsToResource"]
         Effect   = "Allow"
         Resource = "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/iac/app-message" # SSM param ARN
       },
       {
-        Action   = ["ssm:DescribeParameters"]
+        Action   = ["ssm:Get*", "ssm:Describe*", "ssm:List*"]
         Effect   = "Allow"
-        Resource = "*" # SSM param list is global, not per-param
+        Resource = "*"
       },
       {
         Action   = ["s3:ListBucket"] # bucket-level -> bucket ARN
