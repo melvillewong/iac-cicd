@@ -14,6 +14,18 @@ Let GitHub Actions authenticate to AWS with NO stored access keys. Create an OID
 
 ---
 
+## OIDC flow
+
+Pre-defined in AWS:
+
+- `aws_iam_openid_connect_provider`: url=token.actions.githubusercontent.com, client_id_list=[sts.amazonaws.com]
+- `aws_iam_role` trust policy: sub must match `repo:you/repo:*`
+- `aws_iam_role` permissions policy: what creds can do (SSM, S3)
+
+Runtime: GitHub JWT (iss=token.actions... [must match url], aud=sts.amazonaws.com [must match client_id_list], sub=repo:you/repo:ref [must match trust policy]) -> STS AssumeRoleWithWebIdentity -> temp creds (scoped to permissions policy)
+
+---
+
 ## What is OIDC? (read first)
 
 **OIDC = OpenID Connect** — an identity layer on top of OAuth 2.0. It lets one system prove "who I am" to another using a signed, short-lived token (a JWT), instead of a shared password/key.
@@ -30,6 +42,7 @@ Let GitHub Actions authenticate to AWS with NO stored access keys. Create an OID
 **Key payoff:** no secret to leak or rotate. Access is scoped to a specific repo/branch and auto-expires. Compromising the repo doesn't hand over standing keys.
 
 **Two pieces you create:**
+
 - **OIDC provider** — tells AWS "trust tokens issued by `token.actions.githubusercontent.com`".
 - **IAM role** — has a *trust policy* (who may assume it: your repo's `sub`) + a *permissions policy* (what it can do: SSM + S3 state).
 
@@ -39,11 +52,24 @@ Let GitHub Actions authenticate to AWS with NO stored access keys. Create an OID
 
 1. Why is `AssumeRoleWithWebIdentity` + OIDC safer than storing `AWS_ACCESS_KEY_ID` in GitHub Secrets? (name two concrete risks of the stored-key approach)
 
-2. What is the `sub` claim in the GitHub OIDC token? Why must the role's trust policy pin it to your specific repo (and maybe branch)?
+- risk 1: long-lived, no auto-expiry → if leaked (logs, clone, repo), attacker has standing AWS access until manually rotated
+- risk 2: stored in GitHub Secrets = extra attack surface + ongoing rotation burden
+- OIDC: no stored secret, per-run token auto-expires ~1hr, scoped to repo
 
-3. What's the difference between a role's **trust policy** (`assume_role_policy`) and its **permissions policy**? Which controls *who can assume*, which controls *what it can do*?
+1. What is the `sub` claim in the GitHub OIDC token? Why must the role's trust policy pin it to your specific repo (and maybe branch)?
 
-4. Why give the role SSM + S3 (state bucket) permissions only, not `AdministratorAccess`?
+- `sub` = identity of the workflow run (repo + ref: branch/tag/env/PR)
+- pin to your repo so ONLY your repo's workflows assume the role; unpinned, any GitHub repo's token (same `aud`) could assume it → world-assumable
+
+1. What's the difference between a role's **trust policy** (`assume_role_policy`) and its **permissions policy**? Which controls *who can assume*, which controls *what it can do*?
+
+- trust policy (`assume_role_policy`) = WHO can assume (the repo `sub`)
+- permissions policy = WHAT the assumed creds can do (ssm + s3)
+
+1. Why give the role SSM + S3 (state bucket) permissions only, not `AdministratorAccess`?
+
+- least-privilege: minimal perms → smaller blast radius if creds leak/misused
+- SSM = AWS Systems Manager Parameter Store; the demo resource the pipeline manages (the `app-message` param). Role needs ssm (manage param) + s3 (read/write state). Nothing else.
 
 ---
 
@@ -52,18 +78,21 @@ Let GitHub Actions authenticate to AWS with NO stored access keys. Create an OID
 Bootstrap locally with your existing IAM user (it has admin → can create these). Write a `cicd-iam.tf` (or add to `main.tf`), hints:
 
 ### OIDC provider
+
 - resource `aws_iam_openid_connect_provider`
 - `url = "https://token.actions.githubusercontent.com"`
 - `client_id_list = ["sts.amazonaws.com"]`
 - `thumbprint_list` — GitHub's cert thumbprint (look up current value in AWS docs / configure-aws-credentials README)
 
 ### IAM role
+
 - resource `aws_iam_role`, `assume_role_policy` = trust policy (JSON or `data "aws_iam_policy_document"`):
   - `Principal` = `Federated` → the OIDC provider ARN
   - `Action` = `sts:AssumeRoleWithWebIdentity`
   - `Condition`: `StringEquals` on `...:aud = sts.amazonaws.com`, and `StringLike` on `...:sub = repo:melvillewong/iac-cicd:*` (your actual remote repo; tighten to specific branches later)
 
 ### Permissions policy
+
 - resource `aws_iam_role_policy` (inline) or `aws_iam_policy` + attachment
 - allow: `ssm:GetParameter`, `ssm:PutParameter`, `ssm:DeleteParameter`, `ssm:AddTagsToResource`, `ssm:ListTagsForResource` on your parameter ARN
 - allow: `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`, `s3:ListBucket` on the state bucket (so the runner can read/write state)
@@ -92,6 +121,16 @@ terraform output role_arn
 
 1. If a teammate forks your repo and runs a workflow, can their fork assume your role? Why/why not (think about the `sub` condition)?
 
-2. The OIDC role has no access keys at all. How does the runner end up with usable AWS credentials at runtime?
+- No. Fork sub = `repo:teammate/iac-cicd:*`, doesn't match trust policy pinned to `repo:melvillewong/iac-cicd:*` → STS rejects assume-role.
 
-3. Why is this role created by your local IAM user and not by the CI pipeline itself? (chicken-egg — what must exist before the first CI run?)
+1. The OIDC role has no access keys at all. How does the runner end up with usable AWS credentials at runtime?
+
+- Runner calls STS `AssumeRoleWithWebIdentity` + GitHub JWT
+- AWS validates: iss matches OIDC provider, aud matches client_id_list, sub matches trust policy
+- STS returns temp creds (access key + secret + session token, ~1hr) directly to runner — not via GitHub/OIDC
+
+1. Why is this role created by your local IAM user and not by the CI pipeline itself? (chicken-egg — what must exist before the first CI run?)
+
+- CI runner assumes the role to get creds — but role must exist before first run
+- No role → CI can't authenticate → can't create the role itself
+- Local IAM user (admin) breaks the cycle by creating it once before CI ever runs

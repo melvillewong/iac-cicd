@@ -7,3 +7,8 @@ output "s3_bucket_name" {
   description = "S3 bucket name for Terraform state"
   value       = aws_s3_bucket.terraform_state.bucket
 }
+
+output "role_arn" {
+  description = "Arn of role for github action"
+  value       = aws_iam_role.default.arn
+}
