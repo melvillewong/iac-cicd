@@ -7,5 +7,5 @@ variable "region" {
 variable "app_message" {
   description = "AWS param value"
   type        = string
-  default     = "hello AWS"
+  default     = "hello from CI"
 }
