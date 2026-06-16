@@ -9,6 +9,9 @@ permissions:
 
 jobs:
   basic:
+    defaults:
+      run:
+        working-directory: app    # all run steps execute here
     runs-on: ubuntu-latest
     steps:
       - name: Git clone the repo
