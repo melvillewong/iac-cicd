@@ -81,6 +81,11 @@ terraform plan        # expect: No changes
 ## Insights
 
 - **plan refreshes the whole state.** Whatever sits in a config's state, the runner must have read perms for. Shrinking the state = shrinking required perms.
+- **the role needs refresh-READ perms, not just action perms.** `plan`/`apply` refresh every resource in state before diffing → role needs Get/Describe/List on top of Create/Update/Delete.
+  - even a no-op plan needs the reads
+  - found empirically: `ssm:GetParameter` wasn't enough, refresh also calls `ssm:DescribeParameters`
+  - `DescribeParameters` is a list action → can't scope to one ARN, needs `Resource = "*"`
+  - skippable via `plan -refresh=false`, trades drift detection
 - **don't let CI manage its own bootstrap.** State bucket, OIDC provider, CI role = admin-owned, applied once. CI manages only app resources. Standard real-world layering (bootstrap/foundation vs app/workload), sometimes even separate repos.
 - **state is derivable from reality.** `terraform import` reads from live AWS, not from any prior state. Lose all state → rebuild via import (given resources + config exist). S3 versioning is the extra safety net.
 - **new state never reads the old.** A config on a new backend `key` starts empty; `import` populates it purely from AWS reality (the resource ID + API), never from the original state object. That's why bootstrap (new key) imports while app (same key as original) just `state rm`s.

@@ -80,12 +80,15 @@ gh run watch
 
 1. Change `app_message` in a PR. What does the plan show, and what is still true about AWS until you merge?
 
-- the plan shows change to ssm value
+- plan shows `~ update` on the SSM parameter (old value → new value)
+- AWS unchanged: plan is read-only, SSM still has old value until merge triggers apply
 
 1. If `configure-aws-credentials` fails with "Not authorized to perform sts:AssumeRoleWithWebIdentity", where do you look — the workflow, the trust policy, or both?
 
-- both
+- both: workflow (`id-token: write` missing → no JWT minted), trust policy (`sub` mismatch → STS rejects assume-role)
+- check workflow first (cheap), then trust policy `sub` condition (most common mismatch)
 
 1. Why store the role ARN as a repo variable instead of hardcoding it in the YAML? (it's not secret — so why?)
 
-- for management and security
+- ARN contains account ID → leaks account info if repo goes public
+- one change point: update variable, all workflows pick it up without YAML edits

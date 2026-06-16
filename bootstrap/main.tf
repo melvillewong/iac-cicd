@@ -62,6 +62,11 @@ resource "aws_iam_role_policy" "default" {
         Resource = "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/iac/app-message" # SSM param ARN
       },
       {
+        Action   = ["ssm:DescribeParameters"]
+        Effect   = "Allow"
+        Resource = "*" # SSM param list is global, not per-param
+      },
+      {
         Action   = ["s3:ListBucket"] # bucket-level -> bucket ARN
         Effect   = "Allow"
         Resource = aws_s3_bucket.terraform_state.arn
