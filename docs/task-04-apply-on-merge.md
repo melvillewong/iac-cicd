@@ -47,6 +47,8 @@ Add a second workflow that runs `terraform apply` ONLY when a PR merges to `main
 - repo → Settings → Environments → New environment: `prod`
 - add yourself as a **required reviewer** (forces manual approval before apply runs)
 
+> **GitHub free plan limit:** required reviewers only available on public repos or private repos with Pro/Team/Enterprise. On free+private: environment exists but approval gate is unavailable. Fix: make repo public (free) or upgrade to Pro ($4/mo).
+
 > Note: CI applies **only the `app/` config** (the SSM param). `bootstrap/` (bucket, OIDC, role) is admin-applied locally, never by this workflow.
 
 ### 2. Create `.github/workflows/apply.yml` (hints)
