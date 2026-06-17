@@ -44,15 +44,17 @@ Add a second workflow that runs `terraform apply` ONLY when a PR merges to `main
 
 ### 1. Create a GitHub Environment
 
-- repo → Settings → Environments → New environment: `production`
+- repo → Settings → Environments → New environment: `prod`
 - add yourself as a **required reviewer** (forces manual approval before apply runs)
+
+> **GitHub free plan limit:** required reviewers only available on public repos or private repos with Pro/Team/Enterprise. On free+private: environment exists but approval gate is unavailable. Fix: make repo public (free) or upgrade to Pro ($4/mo).
 
 > Note: CI applies **only the `app/` config** (the SSM param). `bootstrap/` (bucket, OIDC, role) is admin-applied locally, never by this workflow.
 
 ### 2. Create `.github/workflows/apply.yml` (hints)
 
 - **trigger**: `on: push: branches: [main]` (optionally `paths: app/**`)
-- **job**: `environment: production` (triggers the approval prompt) + `defaults.run.working-directory: app`
+- **job**: `environment: prod` (triggers the approval prompt) + `defaults.run.working-directory: app`
 - **permissions**: `id-token: write`, `contents: read`
 - **steps** (mirror `plan.yml`):
   1. `actions/checkout`
@@ -89,7 +91,7 @@ aws ssm get-parameter --name /iac/app-message --query "Parameter.Value" --output
 - PR opened: `plan.yml` runs → posts plan diff
 - merged to `main`: `apply.yml` triggers → pauses for env approval → approved → SSM updated
 
-1. If you skipped the `production` environment, what protection would you lose even with branch protection on `main`?
+1. If you skipped the `prod` environment, what protection would you lose even with branch protection on `main`?
 
 - branch protection gates merge, not deploy; without env, push-to-main fires apply instantly with no pause
 - env approval = runtime checkpoint after merge; self-merge fine for solo, env gate is the real guard
