@@ -44,11 +44,6 @@ data "aws_iam_policy_document" "trust" {
   }
 }
 
-resource "aws_ssm_parameter" "message" {
-  name  = "/iac/app-message"
-  value = var.app_message
-  type  = "String"
-}
 
 resource "aws_iam_role" "default" {
   name               = "github-action-cicd"
@@ -62,9 +57,14 @@ resource "aws_iam_role_policy" "default" {
     Version = "2012-10-17" # fixed IAM policy-language date, always this value
     Statement = [
       {
-        Action   = ["ssm:GetParameter", "ssm:PutParameter", "ssm:DeleteParameter", "ssm:AddTagsToResource", "ssm:ListTagsForResource"]
+        Action   = ["ssm:PutParameter", "ssm:DeleteParameter", "ssm:AddTagsToResource"]
         Effect   = "Allow"
-        Resource = aws_ssm_parameter.message.arn # SSM param ARN 
+        Resource = "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/iac/app-message" # SSM param ARN
+      },
+      {
+        Action   = ["ssm:Get*", "ssm:Describe*", "ssm:List*"]
+        Effect   = "Allow"
+        Resource = "*"
       },
       {
         Action   = ["s3:ListBucket"] # bucket-level -> bucket ARN

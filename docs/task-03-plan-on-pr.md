@@ -39,20 +39,23 @@ Add a GitHub Actions workflow that runs on every pull request: format check, ini
 
 ## Your task
 
+> Design: state is split into `bootstrap/` (bucket, OIDC, role; admin-applied locally) and `app/` (the SSM param; CI-managed). CI plans **only `app/`** so plan refreshes just the param → least-privilege role suffices. See [lesson-bootstrap-vs-app-state.md](lesson-bootstrap-vs-app-state.md).
+
 Create `.github/workflows/plan.yml` (hints — fill the details):
 
-- **trigger**: `on: pull_request` (repo root = the tf config, so no `paths` filter needed)
+- **trigger**: `on: pull_request` (optionally `paths: app/**`)
+- **job**: `defaults.run.working-directory: app` (CI operates the app config only)
 - **permissions** (top level or job): `id-token: write` (OIDC), `contents: read`, `pull-requests: write` (to comment)
 - **job steps**:
   1. `actions/checkout`
-  2. `aws-actions/configure-aws-credentials` → `role-to-assume: <role_arn from task 02>`, `aws-region: eu-west-1`
-  3. `hashicorp/setup-terraform`
+  2. `aws-actions/configure-aws-credentials` → `role-to-assume: ${{ vars.AWS_ROLE_ARN }}`, `aws-region: ${{ vars.AWS_REGION }}`
+  3. `hashicorp/setup-terraform` (keep the wrapper on → exposes plan `stdout` for the comment)
   4. `terraform fmt -check`
-  5. `terraform init`
+  5. `terraform init` with `-backend-config` flags (bucket/key/region from repo vars + `use_lockfile`/`encrypt`; `backend.hcl` is gitignored so CI rebuilds it from vars)
   6. `terraform validate`
-  7. `terraform plan -no-color` (tf files at repo root — no `working-directory` needed)
-  8. (nice-to-have) post the plan output as a PR comment
-- store the role ARN as a repo **variable** (`vars.AWS_ROLE_ARN`) or secret, not hardcoded
+  7. `terraform plan -no-color` (`continue-on-error: true` so the comment still posts on failure)
+  8. comment a **summary** (resource lines + `Plan:` count), not the full diff → see [note-plan-output-disclosure.md](note-plan-output-disclosure.md)
+- store the role ARN + state bucket/key as repo **variables** (`vars.AWS_ROLE_ARN`, `vars.AWS_REGION`, `vars.TF_STATE_BUCKET`, `vars.TF_STATE_KEY`), not hardcoded
 
 Then:
 
@@ -71,8 +74,8 @@ gh run watch
 ## Verify
 
 - PR shows the workflow running → green
-- `plan` step output lists the SSM parameter as `+ create` (or `~ update` if you changed the value)
-- No resources actually created (check: `aws ssm get-parameter --name /iac-learning/app-message` still errors / unchanged until merge)
+- the comment shows the summary: `# aws_ssm_parameter.message will be updated in-place` + `Plan: 0 to add, 1 to change, 0 to destroy.`
+- No resources actually changed (check: `aws ssm get-parameter --name /iac/app-message --query "Parameter.Value" --output text` still shows the OLD value until merge)
 
 ---
 
@@ -80,12 +83,15 @@ gh run watch
 
 1. Change `app_message` in a PR. What does the plan show, and what is still true about AWS until you merge?
 
-- the plan shows change to ssm value
+- plan shows `~ update` on the SSM parameter (old value → new value)
+- AWS unchanged: plan is read-only, SSM still has old value until merge triggers apply
 
 1. If `configure-aws-credentials` fails with "Not authorized to perform sts:AssumeRoleWithWebIdentity", where do you look — the workflow, the trust policy, or both?
 
-- both
+- both: workflow (`id-token: write` missing → no JWT minted), trust policy (`sub` mismatch → STS rejects assume-role)
+- check workflow first (cheap), then trust policy `sub` condition (most common mismatch)
 
 1. Why store the role ARN as a repo variable instead of hardcoding it in the YAML? (it's not secret — so why?)
 
-- for management and security
+- ARN contains account ID → leaks account info if repo goes public
+- one change point: update variable, all workflows pick it up without YAML edits

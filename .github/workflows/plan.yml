@@ -1,0 +1,68 @@
+name: pr-plan
+
+on:
+  pull_request:
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  basic:
+    defaults:
+      run:
+        working-directory: app    # all run steps execute here
+    runs-on: ubuntu-latest
+    steps:
+      - name: Git clone the repo
+        uses: actions/checkout@v6
+      - name: AWS credentials config
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: true
+      - name: fmt check
+        run: |
+          terraform fmt -check
+      - name: provider init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ vars.TF_STATE_KEY }}" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+      - name: validate
+        run: |
+          terraform validate
+      - name: plan
+        id: plan
+        run: |
+          terraform plan -no-color
+        continue-on-error: true
+
+      - name: comment plan
+        uses: actions/github-script@v9
+        env:
+          PLAN: ${{ steps.plan.outputs.stdout }}
+        with:
+          script: |
+            const plan = process.env.PLAN || '';
+            const summary = plan.split('\n')
+              .filter(l => /will be (created|updated|destroyed|replaced|read)/.test(l)
+                        || /^(Plan:|No changes)/.test(l.trim()))
+              .join('\n') || 'No summary (plan may have errored).';
+            const body = `#### Terraform Plan (summary)\n\`\`\`\n${summary}\n\`\`\``;
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body.substring(0, 65000)
+            });
+      - name: plan status
+        if: steps.plan.outcome == 'failure'
+        run: exit 1

@@ -3,9 +3,3 @@ variable "region" {
   type        = string
   default     = "eu-west-1"
 }
-
-variable "app_message" {
-  description = "AWS param value"
-  type        = string
-  default     = "hello AWS"
-}
