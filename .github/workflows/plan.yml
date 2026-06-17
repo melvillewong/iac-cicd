@@ -1,4 +1,4 @@
-name: iac-test
+name: pr-plan
 
 on:
   pull_request:

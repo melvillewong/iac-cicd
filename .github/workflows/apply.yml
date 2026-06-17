@@ -1,0 +1,41 @@
+name: merge-main-apply
+
+on:
+  push:
+    branches: [main]
+    paths: [app/**]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  apply:
+    environment: prod
+    defaults:
+      run:
+        working-directory: app
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: clone repo
+        uses: actions/checkout@v6
+      - name: AWS credentials config
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+      - name: TF init
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ vars.TF_STATE_KEY }}" \
+            -backend-config="region=${{ vars.AWS_REGION }}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+      - name: TF apply
+        run: |
+          terraform apply -auto-approve -input=false
+
