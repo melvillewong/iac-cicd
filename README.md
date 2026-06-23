@@ -49,15 +49,15 @@ Design rationale (OIDC auth, the bootstrap/app split, the plan/apply split, the 
 
 ## Repository layout
 
-```
-bootstrap/                # one-time setup, applied locally
-  main.tf                 # OIDC provider + IAM role + S3 state bucket
-app/                      # example workload the pipeline manages (swap for real infra)
-  main.tf                 # SSM parameter, a minimal free resource that produces plan diffs
+```bash
+bootstrap/                # one-time, local
+  main.tf                 # OIDC + IAM role + state bucket
+app/                      # example workload, swap for real
+  main.tf                 # SSM param (free resource)
 .github/workflows/
-  plan.yml                # PR: fmt → validate → plan → comment
-  apply.yml               # merge to main: init → apply (prod-gated)
-backend.hcl.example       # backend config template (real backend.hcl is gitignored)
+  plan.yml
+  apply.yml
+backend.hcl.example       # template; real one gitignored
 ```
 
 - `bootstrap/` and `app/` use separate state keys in one bucket, so state never collides.
