@@ -1,6 +1,6 @@
-# iac-cicd — GitOps CI/CD for Terraform on AWS
+# GitOps CI/CD for Terraform on AWS
 
-Keyless and gated. Git is the source of truth: changes are **proposed** in a PR (plan-only) and **applied** on merge (after manual approval). No manual `terraform apply`, no long-lived AWS credentials.
+> Keyless and gated. Git is the source of truth: changes are proposed in a PR (plan-only) and applied on merge (after manual approval). No manual `terraform apply`, no long-lived AWS credentials.
 
 ## Features
 
@@ -17,30 +17,32 @@ flowchart TD
     dev([Developer])
 
     subgraph gh["GitHub Actions"]
-        plan["plan.yml<br/>fmt → validate → plan"]
-        apply["apply.yml<br/>init → apply"]
+        plan["plan.yml"]
+        gate{{"prod approval"}}
+        apply["apply.yml"]
     end
 
     subgraph aws["AWS"]
-        sts["STS<br/>AssumeRoleWithWebIdentity"]
-        s3[("S3 remote state<br/>encrypted, locked")]
-        infra["Managed infrastructure"]
+        sts["STS"]
+        s3[("S3 state")]
+        infra["Infrastructure"]
     end
 
-    comment["PR comment"]
+    cmt["PR comment"]
 
-    dev -->|open PR| plan
-    dev -->|merge to main| apply
+    dev -->|PR| plan
+    dev -->|merge| gate
+    gate -->|approve| apply
 
-    plan -.->|"OIDC JWT (id-token: write)"| sts
-    apply -.->|"OIDC JWT + prod approval gate"| sts
-    sts -.->|"temp creds<br/>trust: sub=repo, aud=sts"| gh
+    plan -.->|OIDC| sts
+    apply -.->|OIDC| sts
+    sts -.->|creds| gh
 
-    plan <-->|read state| s3
-    apply <-->|read + write state| s3
+    plan <-->|state| s3
+    apply <-->|state| s3
 
-    plan -->|plan summary| comment
-    apply -->|applies diff| infra
+    plan --> cmt
+    apply --> infra
 ```
 
 Design rationale (OIDC auth, the bootstrap/app split, the plan/apply split, the approval gate) is recorded in [docs/adr/](docs/adr/).
@@ -48,22 +50,22 @@ Design rationale (OIDC auth, the bootstrap/app split, the plan/apply split, the 
 ## Repository layout
 
 ```
-bootstrap/            one-time setup, applied locally
-  main.tf             OIDC provider + IAM role + S3 state bucket
-app/                  example workload the pipeline manages (swap for real infra)
-  main.tf             SSM parameter, a minimal free resource that produces plan diffs
+bootstrap/                # one-time setup, applied locally
+  main.tf                 # OIDC provider + IAM role + S3 state bucket
+app/                      # example workload the pipeline manages (swap for real infra)
+  main.tf                 # SSM parameter, a minimal free resource that produces plan diffs
 .github/workflows/
-  plan.yml            PR: fmt → validate → plan → comment
-  apply.yml           merge to main: init → apply (prod-gated)
-backend.hcl.example   backend config template (real backend.hcl is gitignored)
+  plan.yml                # PR: fmt → validate → plan → comment
+  apply.yml               # merge to main: init → apply (prod-gated)
+backend.hcl.example       # backend config template (real backend.hcl is gitignored)
 ```
 
-- `bootstrap/` and `app/` use **separate state keys** in one bucket, so state never collides.
+- `bootstrap/` and `app/` use separate state keys in one bucket, so state never collides.
 - `bootstrap/` runs once before CI: the IAM role and state bucket must exist before workflows can assume the role.
 
 ## Quickstart
 
-1. **Bootstrap (once, locally):** create the OIDC provider, IAM role, and state bucket.
+1. Bootstrap (once, locally): create the OIDC provider, IAM role, and state bucket.
 
    ```bash
    cd bootstrap
@@ -71,11 +73,11 @@ backend.hcl.example   backend config template (real backend.hcl is gitignored)
    terraform apply
    ```
 
-2. **Configure repo variables** (Settings → Secrets and variables → Actions → Variables):
+2. Configure repo variables (Settings → Secrets and variables → Actions → Variables):
    `AWS_ROLE_ARN`, `AWS_REGION`, `TF_STATE_BUCKET`, `TF_STATE_KEY`, all from the bootstrap outputs.
-3. **Add a `prod` environment** (Settings → Environments) with a required reviewer to gate applies.
-4. **Open a PR** touching `app/` → `plan.yml` posts the plan as a comment.
-5. **Merge** → `apply.yml` waits for approval, then applies.
+3. Add a `prod` environment (Settings → Environments) with a required reviewer to gate applies.
+4. Open a PR touching `app/` → `plan.yml` posts the plan as a comment.
+5. Merge → `apply.yml` waits for approval, then applies.
 
 ## Known limitations
 
