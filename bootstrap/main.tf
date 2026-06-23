@@ -19,6 +19,13 @@ resource "aws_s3_bucket" "terraform_state" {
   bucket = "terraform-state-${data.aws_caller_identity.current.account_id}"
 }
 
+resource "aws_s3_bucket_versioning" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 resource "aws_iam_openid_connect_provider" "default" {
   url            = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]

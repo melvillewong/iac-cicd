@@ -9,3 +9,6 @@ terraform.rc
 !*.tfvars.example
 backend.hcl
 !backend.hcl.example
+
+# study notes, kept local
+docs/learning/
